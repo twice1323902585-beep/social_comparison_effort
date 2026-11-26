@@ -1,0 +1,3443 @@
+---
+title: "Study3DataAnalysis"
+author: "JiaRui"
+date: "2025-12-16"
+output: html_document
+---
+```{r setup, include=FALSE}
+library(Rmisc)
+library(tidyverse)
+library(bruceR)
+library(ggpubr)
+library(afex)
+library(emmeans)
+library(sjPlot)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(xlsx)
+library(ggplot2)
+library(ggtext)
+library(psych)
+library(effects)
+library(brms)
+library(parameters)
+library(simr)
+
+
+gg.rr <-theme(axis.line = element_line(colour = "black"),text = element_text(family='Arial',size=11),
+        axis.title.y = element_markdown(margin = margin(t = 20, r = 5, b = 20, l = 0)),
+        axis.title.x = element_markdown(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    strip.background = element_blank(),
+    plot.title = element_markdown(hjust = 0.5,size=12))
+
+gg.side <-theme(axis.line = element_line(colour = "black"),text = element_text(size=16),
+        axis.title.y = element_markdown(margin = margin(t = 0, r = 8, b = 0, l = 0)), ##up right down left
+        axis.title.x = element_markdown(margin = margin(t = 8, r = 0, b = 0, l = 0)),axis.text = element_text(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    strip.background = element_blank(),
+    plot.title = element_markdown(hjust = 0.5,size=12))
+
+```
+
+# Study2 import data
+
+
+
+#  Study1 behavior analysis
+```{r load data}
+Study1.dt_interval = read_csv("C:/Users/ruirui/Desktop/文章3/Study1/dt_interval_m3.csv") 
+Study1.dt_interval$gender = as.factor(Study1.dt_interval$gender)
+Study1.dt_interval$FeedPrev = as.factor(Study1.dt_interval$FeedPrev)
+Study1.dt_interval$SocialPrev = as.factor(Study1.dt_interval$SocialPrev)
+Study1.dt_interval$DiffPrev = as.factor(Study1.dt_interval$DiffPrev)
+Study1.dt_interval$Social = as.factor(Study1.dt_interval$Social)
+Study1.dt_interval$Difference = as.factor(Study1.dt_interval$Difference)
+Study1.dt_interval$meanCongruency = as.numeric(Study1.dt_interval$meanCongruency)
+
+Study1_check = read_csv("C:/Users/ruirui/Desktop/文章3/Study1/post_rate.csv") 
+```
+
+
+```{r Study1 behavior data}
+### CRPS ###
+Study1.dt_interval_CRPS = Study1.dt_interval %>%
+  dplyr::group_by(SubID, SocialPrev, DiffPrev) %>%
+  filter(CRPS > mean(CRPS) - 3 * sd(CRPS),
+         CRPS < mean(CRPS) + 3 * sd(CRPS)) 
+
+### RT ###
+Study1.dt_interval_RT = Study1.dt_interval %>%
+  dplyr::group_by(SubID, SocialPrev, DiffPrev) %>%
+  filter(meanRT > mean(meanRT) - 3 * sd(meanRT),
+         meanRT < mean(meanRT) + 3 * sd(meanRT))
+
+### InConRT ###
+Study1.dt_interval_InConRT = Study1.dt_interval %>%
+  dplyr::group_by(SubID, SocialPrev, DiffPrev) %>%
+  filter(InConMeanRT > mean(InConMeanRT) - 3 * sd(InConMeanRT),
+         InConMeanRT < mean(InConMeanRT) + 3 * sd(InConMeanRT))
+
+### Demographic variables ###
+Study1_age = Study1.dt_interval %>%
+  dplyr::summarise(age_mean = round(mean(age),3),
+                   age_sd = round(sd(age),3))
+Study1_age
+
+Study1_gender = Study1.dt_interval %>%
+ dplyr::group_by(SubID,gender)%>%
+ nest()%>%
+ group_by(gender)%>%
+ dplyr::summarise(category_counts = n()) 
+
+Study1_gender
+```
+
+```{r Study1 des}
+Study1_ACC.feedback = Study1.dt_interval %>%
+  dplyr::group_by(DiffPrev,SocialPrev) %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::summarise(ACC_mean = round(mean(ACC),3),
+                   ACC_sd = round(sd(ACC),3),
+                   ACC_se = ACC_sd/sqrt(35))
+Study1_ACC.feedback
+
+##
+Study1_feedback_sub = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  dplyr::summarise(counts = n()) %>%
+  ungroup()
+
+Study1_feedback_count = Study1_feedback_sub %>%
+  dplyr::group_by(Difference, Social) %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  dplyr::summarise(feed_mean = round(mean(counts),3),
+                   feed_sd = round(sd(counts),3),
+                   feed_se=feed_sd/sqrt(35)) 
+Study1_feedback_count
+```
+
+## Study1 post rating check
+### Study1 emotion post rating
+```{r Study1 emotion post rating des} 
+Study1_check_emotion_sub = Study1_check %>%
+  tidyr::pivot_longer(
+    cols = emotion1:emotion5,
+    names_to = "condition",
+    values_to = "emotion"
+  ) %>%
+  dplyr::mutate(
+    condition = dplyr::recode(
+      condition,
+      emotion1 = "Large downward",
+      emotion2 = "Small downward",
+      emotion3 = "Large upward",
+      emotion4 = "Small upward",
+      emotion5 = "Lateral"
+    )
+  ) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::summarise(
+    mean = mean(emotion, na.rm = TRUE),
+    sd = sd(emotion, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    condition = factor(
+      condition,
+      levels = c(
+        "Large downward",
+        "Small downward",
+        "Lateral",
+        "Small upward",
+        "Large upward"
+      )
+    )
+  ) %>%
+  dplyr::arrange(condition) %>%
+  dplyr::mutate(
+    mean = round(mean, 3),
+    sd = round(sd, 3)
+  )
+
+Study1_check_emotion_sub
+```
+
+```{r Study1 emotion post rating aov}
+Study1_check_emotion = Study1_check %>%
+  pivot_longer(cols = starts_with("emotion"),
+               names_to = "cond",
+               values_to = "emotion") %>%
+  mutate(cond = factor(cond,
+                       levels = c("emotion1","emotion2","emotion5","emotion4","emotion3"),
+                       labels = c("Large_downward","Small_downward","Lateral",
+                                  "Small_upward","Large_upward")))
+
+Study1_check_emotion_aov = aov_ez(id = "SubID", dv = "emotion", 
+                            within = "cond", data = Study1_check_emotion)
+Study1_check_emotion_aov
+
+Study1_check_emotion_post = pairs(emmeans(Study1_check_emotion_aov, ~ cond), 
+                                adjust = "bonferroni")
+Study1_check_emotion_post
+
+```
+
+
+```{r Study1 emotion post rating emmeans}
+emotion_emm = emmeans(
+  Study1_check_emotion_aov,
+  ~ cond
+)
+
+emotion_linear = contrast(
+  emotion_emm,
+  method = list(
+    "Linear trend" = c(2, 1, 0, -1, -2)
+  ),
+  adjust = "none"
+)
+
+emotion_linear
+```
+##  Study1 CRPS analysis
+### Study1 social feedback CRPS
+```{r Study1 social feedback CRPS lmm}
+### linear mixed-effects model CRPS
+Study1.dt_CRPS_lmm = Study1.dt_interval_CRPS %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_CRPS_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$gender) = contr.sum
+
+Study1.lmm_CRPS = lmerTest::lmer(CRPS ~ age+gender+SocialPrev*DiffPrev+meanCongruency+
+                               (1+SocialPrev*DiffPrev+meanCongruency|SubID), Study1.dt_CRPS_lmm, REML=FALSE)
+
+summary(Study1.lmm_CRPS)
+Study1.lmm_CRPS_anova = anova(Study1.lmm_CRPS)
+Study1.lmm_CRPS_anova 
+
+```
+
+```{r Study1 social comparison CRPS ci}
+Study1.lmm_CRPS_ci = model_parameters(
+  Study1.lmm_CRPS,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_CRPS_ci
+```
+
+
+```{r Study1 social feedback CRPS des}
+Study1_CRPS.feedback = Study1.dt_interval_CRPS %>%
+  dplyr::group_by(DiffPrev,SocialPrev) %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::summarise(CRPS_mean = round(mean(CRPS),3),
+                   CRPS_sd = round(sd(CRPS),3),
+                   CRPS_se = CRPS_sd/sqrt(35))
+Study1_CRPS.feedback
+```
+
+```{r Study1 social feedback CRPS post hoc}
+lmm_CRPS_post_hoc1 = summary(emmeans(Study1.lmm_CRPS, 
+                                     list(pairwise~ DiffPrev|SocialPrev),
+                                     adjust = "bonferroni",
+                                     pbkrtest.limit = 10000))
+summary(lmm_CRPS_post_hoc1)
+
+lmm_CRPS_post_hoc2 = summary(emmeans(Study1.lmm_CRPS, 
+                                     list(pairwise~ SocialPrev|DiffPrev), 
+                                     adjust = "bonferroni",
+                                     pbkrtest.limit = 10000))
+summary(lmm_CRPS_post_hoc2)
+```
+
+```{r Study1 social feedback CRPS plot}
+Study1_CRPS.sub = Study1.dt_CRPS_lmm %>%
+  dplyr::group_by(SubID, SocialPrev, DiffPrev) %>%
+  dplyr::summarise(CRPS_mean = round(mean(CRPS),3),
+                   CRPS_sd = round(sd(CRPS),3),
+                   CRPS_se=CRPS_sd/sqrt(35))
+
+Study1_CRPS = Study1_CRPS.sub %>%  
+  dplyr::mutate(Social = factor(recode(SocialPrev, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(DiffPrev, "1" = "Large", "2" = "Small"), 
+                              levels = c("Large", "Small")))
+
+
+Study1_CRPS.plot = ggbarplot(Study1_CRPS, x = "Diff", y = "CRPS_mean", 
+                           fill = "Social", alpha = 0.7,
+                           ylab = "CRPS", xlab = "Difference",
+                           add.params = list(color = "Social"),
+                           add = c("mean_se","jitter"),
+                           palette = c("#1b7c3d", "#2b6a99"), 
+                           width = 0.45,
+                           position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(0.8, 1.3)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_CRPS.plot = ggpar(Study1_CRPS.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14, face = "bold"))
+
+Study1_CRPS.plot
+#ggsave("....Study1_CRPS.pdf",Study1_CRPS.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 model effort estimate CRPS
+```{r Study1 effort estimate CRPS lmm}
+### linear mixed-effects model CRPS
+Study1.dt_CRPS_lmm = Study1.dt_interval_CRPS %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_CRPS_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$gender) = contr.sum
+
+Study1.lmm_effort_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_effort_pre_m3+meanCongruency+
+                               (1+mbased_effort_pre_m3+meanCongruency|SubID), 
+                               Study1.dt_CRPS_lmm, REML=FALSE)
+
+summary(Study1.lmm_effort_CRPS)
+Study1.lmm_effort_CRPS_anova = anova(Study1.lmm_effort_CRPS)
+Study1.lmm_effort_CRPS_anova 
+##integrated_PC1  discrepancy_PC2  mbased_effort_pre_m3  mbased_efficacy_pre_m3 
+```
+
+
+
+```{r Study1 effort estimate CRPS ci}
+Study1.lmm_effort_CRPS_ci = model_parameters(
+  Study1.lmm_effort_CRPS,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_CRPS_ci
+```
+
+
+### Study1 model efficacy estimate CRPS
+```{r Study1 efficacy estimate CRPS lmm}
+### linear mixed-effects model CRPS
+Study1.dt_CRPS_lmm = Study1.dt_interval_CRPS %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_CRPS_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$gender) = contr.sum
+
+Study1.lmm_efficacy_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_efficacy_pre_m3+meanCongruency+
+                                        (1+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                                      Study1.dt_CRPS_lmm, REML=FALSE)
+
+summary(Study1.lmm_efficacy_CRPS)
+Study1.lmm_efficacy_CRPS_anova = anova(Study1.lmm_efficacy_CRPS)
+Study1.lmm_efficacy_CRPS_anova 
+```
+
+```{r Study1 efficacy estimate CRPS ci}
+Study1.lmm_efficacy_CRPS_ci = model_parameters(
+  Study1.lmm_efficacy_CRPS,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_CRPS_ci
+```
+
+
+### Study1 model effort & efficacy estimate CRPS
+```{r Study1 model effort & efficacy CRPS lmm}
+### linear mixed-effects model CRPS
+Study1.dt_CRPS_lmm = Study1.dt_interval_CRPS %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_CRPS_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$gender) = contr.sum
+
+Study1.lmm_combined_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_effort_pre_m3+
+                                          mbased_efficacy_pre_m3+meanCongruency+
+                                        (1+mbased_effort_pre_m3+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                                      Study1.dt_CRPS_lmm, REML=FALSE)
+
+summary(Study1.lmm_combined_CRPS)
+Study1.lmm_combined_CRPS_anova = anova(Study1.lmm_combined_CRPS)
+Study1.lmm_combined_CRPS_anova 
+```
+
+
+
+```{r Study1 model effort & efficacy CRPS ci}
+Study1.lmm_combined_CRPS_ci = model_parameters(
+  Study1.lmm_combined_CRPS,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_combined_CRPS_ci
+```
+
+```{r all model CRPS}
+Study1.dt_CRPS_lmm = Study1.dt_interval_CRPS %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_CRPS_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_CRPS_lmm$gender) = contr.sum
+
+Study1.lmm_effort_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_effort_pre_m3+meanCongruency+
+                               (1+mbased_effort_pre_m3+meanCongruency|SubID), 
+                               Study1.dt_CRPS_lmm, REML=FALSE)
+
+Study1.lmm_efficacy_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_efficacy_pre_m3+meanCongruency+
+                               (1+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                               Study1.dt_CRPS_lmm, REML=FALSE)
+
+Study1.lmm_combined_CRPS = lmerTest::lmer(CRPS ~ age+gender+mbased_effort_pre_m3+
+                                          mbased_efficacy_pre_m3+meanCongruency+
+                                        (1+mbased_effort_pre_m3+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                                      Study1.dt_CRPS_lmm, REML=FALSE)
+```
+
+```{r all model CRPS}
+## Effort intention
+effort_sep = parameters::model_parameters(
+  Study1.lmm_effort_CRPS,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "mbased_effort_pre_m3") %>%
+  transmute(Predictor = "Effort intention",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation
+efficacy_sep = parameters::model_parameters(
+  Study1.lmm_efficacy_CRPS,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "mbased_efficacy_pre_m3") %>%
+  transmute(Predictor = "Efficacy expectation",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Effort intention：joint
+effort_joint = parameters::model_parameters(
+  Study1.lmm_combined_CRPS,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  
+  filter(Parameter == "mbased_effort_pre_m3") %>%
+  transmute(Predictor = "Effort intention",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation：joint
+efficacy_joint = parameters::model_parameters(
+  Study1.lmm_combined_CRPS,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "mbased_efficacy_pre_m3") %>%
+  transmute(Predictor = "Efficacy expectation",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+plot_CRPS = bind_rows(
+  effort_sep,
+  efficacy_sep,
+  effort_joint,
+  efficacy_joint)
+
+plot_CRPS
+```
+
+
+```{r all model CRPS}
+plot_CRPS$Predictor = factor(plot_CRPS$Predictor,
+                             levels = c("Efficacy expectation",
+                                        "Effort intention"))
+
+plot_CRPS$Model = factor(plot_CRPS$Model,
+                         levels = c("Joint model",
+                                    "Separate model"))
+
+model_CRPS.plot = ggplot(plot_CRPS,
+  aes(x = b,
+      y = Predictor,
+      shape = Model,
+      color = Model )) +
+
+  geom_vline( xintercept = 0,
+              color = "grey60",
+              linewidth = 0.7) +
+
+  # 95% CI
+  geom_errorbarh(aes(xmin = CI_low,
+                     xmax = CI_high),
+                 height = 0,
+                 linewidth = 0.8,
+                 position = position_dodge(width = 0.55)) +
+
+  # coefficient
+  geom_point(size = 3.5,
+             position = position_dodge(width = 0.55)) +
+
+  scale_color_manual(values = c(
+    "Separate model" = "#D97973",
+    "Joint model" = "#47A6A0" )) +
+  
+  labs(x = "Regression coefficient (b)",
+      y = NULL, shape = NULL, color = NULL) +
+
+  theme_classic(base_size = 14) +
+
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 13),
+        legend.position = "bottom")+gg.side
+
+model_CRPS.plot
+#ggsave("...Study1_model3_CRPS.pdf",model_CRPS.plot, width = 5.5, height = 6)
+```
+
+##  Study1 RT analysis
+### Study1 social feedback RT
+```{r Study1 social feedback RT lmm}
+### linear mixed-effects model RT
+Study1.dt_RT_lmm = Study1.dt_interval_RT %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) %>%
+  mutate(logRT = log(meanRT))
+
+contrasts(Study1.dt_RT_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$gender) = contr.sum
+
+Study1.lmm_RT = lmerTest::lmer(meanRT ~ age+gender+SocialPrev*DiffPrev+meanCongruency+
+                               (1+SocialPrev*DiffPrev+meanCongruency|SubID), 
+                               Study1.dt_RT_lmm, REML=FALSE)
+ 
+summary(Study1.lmm_RT)
+Study1.lmm_RT_anova = anova(Study1.lmm_RT)
+Study1.lmm_RT_anova
+```
+
+```{r Study1 social feedback social comparison RT ci}
+Study1.lmm_RT_ci = model_parameters(
+  Study1.lmm_RT,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_RT_ci
+```
+
+```{r Study1 RT des}
+Study1_RT.feedback = Study1.dt_interval_RT %>%
+  dplyr::group_by(DiffPrev,SocialPrev) %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::summarise(RT_mean = round(mean(meanRT)),
+                   RT_sd = round(sd(meanRT)),
+                   RT_se = RT_sd/sqrt(35))
+Study1_RT.feedback
+```
+
+
+```{r Study1 RT plot}
+Study1_RT.sub = Study1.dt_RT_lmm %>%
+  dplyr::group_by(SubID, SocialPrev, DiffPrev) %>%
+  dplyr::summarise(RT_mean = round(mean(meanRT)),
+                   RT_sd = round(sd(meanRT)),
+                   RT_se= RT_sd/sqrt(35))
+
+Study1_RT = Study1_RT.sub %>%  
+  dplyr::mutate(Social = factor(recode(SocialPrev, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(DiffPrev, "1" = "Large", "2" = "Small"), 
+                              levels = c("Large", "Small")))
+
+
+Study1_RT.plot = ggbarplot(Study1_RT, x = "Diff", y = "RT_mean", 
+                         fill = "Social", alpha = 0.7,
+                         ylab = "Reaction time (ms)", xlab = "Difference",
+                         add.params = list(color = "Social"),
+                         add = c("mean_se","jitter"),
+                         palette = c("#1b7c3d", "#2b6a99"), width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(400, 850)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_RT.plot = ggpar(Study1_RT.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold"))
+
+Study1_RT.plot
+#ggsave("....Study1_RT.pdf",Study1_RT.plot, width = 7, height = 6)
+```
+
+### Study1 model effort estimate RT
+```{r Study1 effort estimate RT lmm}
+### linear mixed-effects model RT
+Study1.dt_RT_lmm = Study1.dt_interval_RT %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) %>%
+  mutate(logRT = log(meanRT))
+
+contrasts(Study1.dt_RT_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$gender) = contr.sum
+
+Study1.lmm_effort_RT = lmerTest::lmer(meanRT ~ age+gender+mbased_effort_pre_m3+meanCongruency+
+                                        (1+mbased_effort_pre_m3+meanCongruency|SubID), 
+                                      Study1.dt_RT_lmm, REML=FALSE)
+
+summary(Study1.lmm_effort_RT)
+Study1.lmm_effort_RT_anova = anova(Study1.lmm_effort_RT)
+Study1.lmm_effort_RT_anova 
+```
+
+
+
+```{r Study1 effort estimate RT}
+Study1.lmm_effort_RT_ci = model_parameters(
+  Study1.lmm_effort_RT,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_RT_ci
+```
+
+
+### Study1 model efficacy estimate RT
+```{r Study1 efficacy estimate RT lmm}
+### linear mixed-effects model RT
+Study1.dt_RT_lmm = Study1.dt_interval_RT %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) %>%
+  mutate(logRT = log(meanRT))
+
+contrasts(Study1.dt_RT_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$gender) = contr.sum
+
+Study1.lmm_efficacy_RT = lmerTest::lmer(meanRT ~ age+gender+mbased_efficacy_pre_m3+meanCongruency+
+                                        (1+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                                      Study1.dt_RT_lmm, REML=FALSE)
+
+summary(Study1.lmm_efficacy_RT)
+Study1.lmm_efficacy_RT_anova = anova(Study1.lmm_efficacy_RT)
+Study1.lmm_efficacy_RT_anova 
+```
+
+
+
+```{r Study1 efficacy estimate RT}
+Study1.lmm_efficacy_RT_ci = model_parameters(
+  Study1.lmm_efficacy_RT,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_RT_ci
+```
+
+
+
+
+### Study1 model effort & efficacy estimate RT
+```{r Study1 effort & efficacy estimate RT lmm}
+### linear mixed-effects model RT
+Study1.dt_RT_lmm = Study1.dt_interval_RT %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) %>%
+  mutate(logRT = log(meanRT))
+
+contrasts(Study1.dt_RT_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_RT_lmm$gender) = contr.sum
+
+Study1.lmm_combined_RT = lmerTest::lmer(meanRT ~ age+gender+mbased_effort_pre_m3+
+                                        mbased_efficacy_pre_m3+meanCongruency+
+                                          (1+mbased_effort_pre_m3+mbased_efficacy_pre_m3+meanCongruency|SubID), 
+                                        Study1.dt_RT_lmm, REML=FALSE)
+
+summary(Study1.lmm_combined_RT)
+Study1.lmm_combined_RT_anova = anova(Study1.lmm_combined_RT)
+Study1.lmm_combined_RT_anova 
+```
+
+```{r Study1 effort & efficacy estimate RT}
+Study1.lmm_combined_RT_ci = model_parameters(
+  Study1.lmm_combined_RT,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_combined_RT_ci
+```
+
+
+```{r all model RT}
+## Effort intention
+effort_sep = parameters::model_parameters(
+  Study1.lmm_effort_RT,
+  ci = 0.95)%>%
+  filter(Parameter == "mbased_effort_pre_m3") %>%
+  transmute(Predictor = "Effort intention",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation
+efficacy_sep = parameters::model_parameters(
+  Study1.lmm_efficacy_RT,
+  ci = 0.95) %>%
+  filter(Parameter == "mbased_efficacy_pre_m3") %>%
+  transmute( Predictor = "Efficacy expectation",
+             Model = "Separate model",
+             b = Coefficient,
+             CI_low = CI_low,
+             CI_high = CI_high,
+             p = p)
+
+## Effort intention：joint
+effort_joint = parameters::model_parameters(
+  Study1.lmm_combined_RT,
+  ci = 0.95) %>%
+  filter(Parameter == "mbased_effort_pre_m3") %>%
+  transmute(Predictor = "Effort intention",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation：joint
+efficacy_joint = parameters::model_parameters(
+  Study1.lmm_combined_RT,
+  ci = 0.95) %>%
+  filter(Parameter == "mbased_efficacy_pre_m3") %>%
+  transmute(Predictor = "Efficacy expectation",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+plot_RT = bind_rows(
+  effort_sep,
+  efficacy_sep,
+  effort_joint,
+  efficacy_joint)
+
+plot_RT
+```
+
+
+```{r all model RT}
+plot_RT$Predictor = factor(
+  plot_RT$Predictor,
+  levels = c("Efficacy expectation",
+             "Effort intention"))
+
+plot_RT$Model = factor(
+  plot_RT$Model,
+  levels = c("Joint model",
+             "Separate model"))
+
+model_RT.plot = ggplot(plot_RT,
+                       aes(x = b,
+                           y = Predictor,
+                           shape = Model,
+                           color = Model )) +
+  
+  geom_vline(xintercept = 0,
+             color = "black",
+             linewidth = 0.7) +
+
+  geom_errorbarh(aes(xmin = CI_low,
+                     xmax = CI_high),
+                 height = 0,
+                 linewidth = 0.8,
+                 position = position_dodge(width = 0.55)) +
+
+  geom_point(size = 3.5,
+             position = position_dodge(width = 0.55)) +
+  
+  scale_color_manual(values = c(
+    "Separate model" = "#D97973",
+    "Joint model" = "#47A6A0"))+
+  
+  labs(x = "Regression coefficient (b)",
+       y = NULL,
+       shape = NULL,
+       color = NULL) +
+  
+  theme_classic(base_size = 14) +
+  
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 13),
+        legend.position = "bottom")+gg.side
+
+model_RT.plot
+
+#ggsave("..../plot/Study1_model3_RT.pdf",model_RT.plot, width = 5.5, height = 6)
+```
+
+##  Study1 Effort Intention analysis
+### Study1 Effort Rate Score
+```{r Study1 effort rate lmm}
+Study1.dt_effort_lmm = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_effort_lmm$Social) = contr.sum
+contrasts(Study1.dt_effort_lmm$Difference) = contr.sum
+contrasts(Study1.dt_effort_lmm$gender) = contr.sum
+
+Study1.lmm_effort_rate_feedback = lmerTest::lmer(effort_score ~ age+gender+Social*Difference+
+                                             (1+Social*Difference|SubID),Study1.dt_effort_lmm, REML=FALSE)
+
+Study1.lmm_effort_rate_feedback_anova = anova(Study1.lmm_effort_rate_feedback)
+Study1.lmm_effort_rate_feedback_anova 
+summary(Study1.lmm_effort_rate_feedback)
+```
+
+
+
+```{r Study1 effort rate des}
+Study1.sub_effort_rate.feedback = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  fill(effort_score, .direction = "up")%>%
+  drop_na(effort_score)%>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  dplyr::group_by(Difference, Social) %>%
+  dplyr::summarise(effort_score_mean = round(mean(effort_score),3),
+                   effort_score_sd = round(sd(effort_score),3),
+                   effort_score_se=effort_score_sd/sqrt(35))
+
+Study1.sub_effort_rate.feedback
+```
+
+```{r Study1 effort rate ci}
+Study1.lmm_effort_rate_feedback_ci = model_parameters(
+  Study1.lmm_effort_rate_feedback,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_rate_feedback_ci
+```
+
+```{r Study1 effort rate post_hoc}
+lmm_effort_rate_post_hoc1 = summary(emmeans(Study1.lmm_effort_rate_feedback, 
+                                            list(pairwise~ Difference|Social),
+                                            adjust = "bonferroni",
+                                            pbkrtest.limit = 10000))
+summary(lmm_effort_rate_post_hoc1)
+
+lmm_effort_rate_post_hoc2 = summary(emmeans(Study1.lmm_effort_rate_feedback, 
+                                            list(pairwise~ Social|Difference),
+                                            adjust = "bonferroni",
+                                            pbkrtest.limit = 10000))
+summary(lmm_effort_rate_post_hoc2)
+```
+
+
+```{r Study1 effort rate plot}
+Study1_effort_rate.sub = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  fill(effort_score, .direction = "up")%>%
+  drop_na(effort_score)%>%
+  dplyr::group_by(SubID, Social, Difference) %>%
+  dplyr::summarise(effort_score_mean = round(mean(effort_score),3),
+                   effort_score_sd = round(sd(effort_score),3),
+                   effort_score_se=effort_score_sd/sqrt(35))
+
+Study1_effort_rate = Study1_effort_rate.sub %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_effort_rate.plot = ggbarplot(Study1_effort_rate, x = "Diff", y = "effort_score_mean", 
+                         fill = "Social", alpha = 0.7,
+                         ylab = "Effort Rate Score", xlab = "Exp",
+                         add.params = list(color = "Social"),
+                         add = c("mean_se","jitter"),
+                         palette = c("#1b7c3d", "#2b6a99"),
+                         width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(5, 105)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_effort_rate.plot = ggpar(Study1_effort_rate.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold")
+  )
+
+Study1_effort_rate.plot
+#ggsave("...../study3_beha/Study1_effort_rate.pdf",Study1_effort_rate.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 Effort Estimate Score
+```{r Study1 effort estimate lmm}
+Study1.dt_effort_lmm = Study1.dt_interval %>%
+  drop_na(effort_probe) %>%
+  group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_effort_lmm$Social) = contr.sum
+contrasts(Study1.dt_effort_lmm$Difference) = contr.sum
+contrasts(Study1.dt_effort_lmm$gender) = contr.sum
+
+Study1.lmm_effort_est_feedback = lmerTest::lmer(mbased_effort_m3 ~ age+gender+Social*Difference+
+                                                 (1+Social*Difference|SubID), Study1.dt_effort_lmm, REML=FALSE)
+summary(Study1.lmm_effort_est_feedback)
+Study1_effort_est_feedback_anova = anova(Study1.lmm_effort_est_feedback)
+Study1_effort_est_feedback_anova 
+```   
+
+
+```{r Study1 effort estimate ci}
+Study1.lmm_effort_est_feedback_ci = model_parameters(
+  Study1.lmm_effort_est_feedback,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_est_feedback_ci
+```
+
+```{r Study1 effort estimate des}
+Study1.sub_effort_est.feedback = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  dplyr::group_by(Social) %>%
+  dplyr::summarise(effort_mean = round(mean(mbased_effort_m3),3),
+                   effort_sd = round(sd(mbased_effort_m3),3),
+                   effort_se = effort_sd/sqrt(35))
+
+Study1.sub_effort_est.feedback
+```
+
+```{r Study1 effort estimate plot}
+Study1_effort_est.sub = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  dplyr::group_by(SubID, Difference, Social) %>%
+  dplyr::summarise(effort_mean = round(mean(mbased_effort_m3),3),
+                   effort_sd = round(sd(mbased_effort_m3),3),
+                   effort_se = effort_sd/sqrt(35))
+
+Study1_effort_est = Study1_effort_est.sub %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                              levels = c("Large", "Small")))
+
+Study1_effort_est.plot = ggbarplot(Study1_effort_est, x = "Diff", y = "effort_mean",
+                                 fill = "Social", alpha = 0.7,
+                                 ylab = "effort", xlab = "Difference",
+                                 add.params = list(color = "Social"),
+                                 add = c("mean_se","jitter"),
+                                 palette = c("#1b7c3d", "#2b6a99"), 
+                                 width = 0.45,
+                                 position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(0.05, 1)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_effort_est.plot = ggpar(Study1_effort_est.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold")
+  )
+
+Study1_effort_est.plot
+#ggsave("...../Study1_effort_estimate.pdf",Study1_effort_est.plot, width = 6.4, height = 6)
+```
+### Study1 Effort Score & Effort Estimate Score 
+```{r Study1 effort score and effort estimate lmm}
+Study1.dt_effort_lmm = Study1.dt_interval %>%
+  group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_effort_lmm$Social) = contr.sum
+contrasts(Study1.dt_effort_lmm$Difference) = contr.sum
+contrasts(Study1.dt_effort_lmm$gender) = contr.sum
+
+Study1.lmm_effort_estimate = lmerTest::lmer(rate_score ~ age+gender+mbased_effort_m3+
+                                             (1+mbased_effort_m3|SubID), Study1.dt_effort_lmm, REML=FALSE)
+summary(Study1.lmm_effort_estimate)
+Study1_effort_estimate_anova = anova(Study1.lmm_effort_estimate)
+Study1_effort_estimate_anova 
+#mbased_efficacy_m3 mbased_effort_m3
+```
+
+```{r Study1 effort score and effort estimate ci}
+Study1.lmm_effort_estimate_ci = model_parameters(
+  Study1.lmm_effort_estimate,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_estimate_ci
+```
+
+```{r Study1 effort score and effort estimate plot}
+effort_estimate = Effect(
+  focal.predictors = "mbased_effort_m3",
+  mod = Study1.lmm_effort_estimate,
+  xlevels = list(
+    mbased_effort_m3 = seq(
+      from = min(Study1.dt_effort_lmm$mbased_effort_m3, na.rm = TRUE),
+      to = max(Study1.dt_effort_lmm$mbased_effort_m3, na.rm = TRUE),
+      length.out = 100)))
+
+Study1_effort_estimate = as.data.frame(effort_estimate)
+
+head(Study1_effort_estimate)
+
+Study1_effort_estimate.plot = ggplot(
+  Study1_effort_estimate,
+  aes(x = mbased_effort_m3, y = fit)) +
+  geom_ribbon(
+    aes(ymin = lower, ymax = upper),
+    fill = "#F8766D",
+    alpha = 0.15) +
+  geom_line(color = "#F8766D", linewidth = 1) +
+  labs(x = "effort estimate", y = "effort score") +
+  coord_cartesian(ylim = c(20, 100)) +
+  # scale_y_continuous(breaks = seq(8, 15, by = 1)) +
+  theme_classic()+gg.side
+
+Study1_effort_estimate.plot
+
+#ggsave("..../Study1_effort_estimate.pdf",Study1_effort_estimate.plot, width = 4.5, height = 6)
+```
+
+
+##  Study1 Efficacy analysis
+### Study1 Efficacy Rate Score
+```{r Study1 efficacy rate lmm}
+Study1.dt_efficacy_lmm = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_efficacy_lmm$Social) = contr.sum(2)
+contrasts(Study1.dt_efficacy_lmm$Difference) = contr.sum(2)
+contrasts(Study1.dt_efficacy_lmm$gender) = contr.sum(2)
+
+Study1.lmm_efficacy_rate_feedback = lmerTest::lmer(rate_score ~ age+gender+Social*Difference+
+                                             (1+Social*Difference|SubID), Study1.dt_efficacy_lmm, REML=FALSE)
+summary(Study1.lmm_efficacy_rate_feedback)
+Study1.lmm_efficacy_rate_feedback_anova = anova(Study1.lmm_efficacy_rate_feedback)
+Study1.lmm_efficacy_rate_feedback_anova 
+```                              
+
+```{r Study1 efficacy rate des}
+Study1.sub_efficacy_rate.feedback = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  fill(rate_score, .direction = "up")%>%
+  drop_na(rate_score)%>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  dplyr::group_by(Difference, Social) %>%
+  dplyr::summarise(efficacy_score_mean = round(mean(rate_score),3),
+                   efficacy_score_sd = round(sd(rate_score),3),
+                   efficacy_score_se = efficacy_score_sd/sqrt(35))
+
+Study1.sub_efficacy_rate.feedback
+```
+
+```{r Study1 efficacy rate ci}
+Study1.lmm_efficacy_rate_feedback_ci = model_parameters(
+  Study1.lmm_efficacy_rate_feedback,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_rate_feedback_ci
+```
+
+```{r Study1 efficacy rate post_hoc}
+lmm_efficacy_rate_post_hoc1 = summary(emmeans(Study1.lmm_efficacy_rate_feedback, 
+                                              list(pairwise~ Difference|Social),
+                                              adjust = "bonferroni",pbkrtest.limit = 10000))
+summary(lmm_efficacy_rate_post_hoc1)
+
+lmm_efficacy_rate_post_hoc2 = summary(emmeans(Study1.lmm_efficacy_rate_feedback, 
+                                              list(pairwise~ Social|Difference),
+                                              adjust = "bonferroni",pbkrtest.limit = 10000))
+print(lmm_efficacy_rate_post_hoc2, digits = 3)
+```
+
+
+
+```{r Study1 efficacy rate plot}
+Study1_efficacy_rate.sub = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  fill(rate_score, .direction = "up")%>%
+  drop_na(rate_score)%>%
+  dplyr::group_by(SubID, Difference, Social) %>%
+  dplyr::summarise(rate_score_mean = round(mean(rate_score),3),
+                   rate_score_sd = round(sd(rate_score),3),
+                   rate_score_se=rate_score_sd/sqrt(35))
+
+Study1_efficacy_rate = Study1_efficacy_rate.sub %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_efficacy_rate.plot = ggbarplot(Study1_efficacy_rate, x = "Diff", y = "rate_score_mean", 
+                           fill = "Social", alpha = 0.7,
+                           ylab = "Rate Score", xlab = "Difference",
+                           add.params = list(color = "Social"),
+                           add = c("mean_se","jitter"),
+                           palette = c("#1b7c3d", "#2b6a99"),
+                           width = 0.45,
+                           position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(5, 105)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_efficacy_rate.plot = ggpar(Study1_efficacy_rate.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold")
+  )
+
+Study1_efficacy_rate.plot
+#ggsave("..../Study1_rate.pdf",Study1_rate.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 Efficacy Estimate Score
+```{r Study1 efficacy estimate lmm}
+Study1.dt_efficacy_lmm = Study1.dt_interval %>%
+  drop_na(efficacy_probe) %>%
+  group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_efficacy_lmm$Social) = contr.sum
+contrasts(Study1.dt_efficacy_lmm$Difference) = contr.sum
+contrasts(Study1.dt_efficacy_lmm$gender) = contr.sum
+
+Study1.lmm_efficacy_est_feedback = lmerTest::lmer(mbased_efficacy_m3 ~ age+gender+Social*Difference+
+                                             (1+Social*Difference|SubID), Study1.dt_efficacy_lmm, REML=FALSE)
+summary(Study1.lmm_efficacy_est_feedback)
+Study1_efficacy_est_feedback_anova = anova(Study1.lmm_efficacy_est_feedback)
+Study1_efficacy_est_feedback_anova 
+```
+
+
+```{r Study1 efficacy estimate ci}
+Study1.lmm_efficacy_est_feedback_ci = model_parameters(
+  Study1.lmm_efficacy_est_feedback,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_est_feedback_ci
+```
+
+
+
+```{r Study1 efficacy estimate des}
+Study1.sub_efficacy_est.feedback = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  dplyr::group_by(Difference, Social) %>%
+  dplyr::summarise(efficacy_mean = round(mean(mbased_efficacy_m3),3),
+                   efficacy_sd = round(sd(mbased_efficacy_m3),3),
+                   efficacy_se = efficacy_sd/sqrt(35))
+
+Study1.sub_efficacy_est.feedback
+```
+
+
+
+```{r Study1 efficacy estimate post_hoc}
+lmm_efficacy_est_post_hoc1 = summary(emmeans(Study1.lmm_efficacy_est_feedback, 
+                                             list(pairwise~ Difference|Social),
+                                             adjust = "bonferroni",
+                                             pbkrtest.limit = 10000))
+summary(lmm_efficacy_est_post_hoc1)
+
+lmm_efficacy_est_post_hoc2 = summary(emmeans(Study1.lmm_efficacy_est_feedback, 
+                                             list(pairwise~ Social|Difference),
+                                             adjust = "bonferroni",
+                                             pbkrtest.limit = 10000))
+summary(lmm_efficacy_est_post_hoc2)
+```
+
+
+```{r Study1 efficacy estimate plot}
+Study1_efficacy_est.sub = Study1.dt_interval %>%
+  dplyr::group_by(SubID) %>%
+  dplyr::group_by(SubID, Difference, Social) %>%
+  dplyr::summarise(efficacy_mean = round(mean(mbased_efficacy_m3),3),
+                   efficacy_sd = round(sd(mbased_efficacy_m3),3),
+                   efficacy_se = efficacy_sd/sqrt(35))
+
+Study1_efficacy_est = Study1_efficacy_est.sub %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Diff = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_efficacy_est.plot = ggbarplot(Study1_efficacy_est, x = "Diff", y = "efficacy_mean", 
+                         fill = "Social", alpha = 0.7,
+                         ylab = "Efficacy", xlab = "Difference",
+                         add.params = list(color = "Social"),
+                         add = c("mean_se","jitter"),
+                         palette = c("#1b7c3d", "#2b6a99"), 
+                         width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(0.05, 1)) +
+  theme(axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20))
+
+Study1_efficacy_est.plot = ggpar(Study1_efficacy_est.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold")
+  )
+
+Study1_efficacy_est.plot
+#ggsave("...../Study1_efficacy_est.pdf",Study1_efficacy_est.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 Efficacy Score & Efficacy Estimate Score 
+```{r Study1 efficacy score and efficacy estimate lmm}
+Study1.dt_efficacy_lmm = Study1.dt_interval %>%
+  group_by(SubID) %>%
+  filter(Social == "1"|Social == "2") %>%
+  mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"),
+                         levels = c("Downward", "Upward"))) %>%
+  mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                             levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender)) 
+
+contrasts(Study1.dt_efficacy_lmm$Social) = contr.sum
+contrasts(Study1.dt_efficacy_lmm$Difference) = contr.sum
+contrasts(Study1.dt_efficacy_lmm$gender) = contr.sum
+
+Study1.lmm_efficacy_estimate = lmerTest::lmer(rate_score ~ age+gender+mbased_efficacy_m3+
+                                             (1+mbased_efficacy_m3|SubID), Study1.dt_efficacy_lmm, REML=FALSE)
+summary(Study1.lmm_efficacy_estimate)
+Study1_efficacy_estimate_anova = anova(Study1.lmm_efficacy_estimate)
+Study1_efficacy_estimate_anova 
+#mbased_efficacy_m3 mbased_effort_m3
+```
+
+
+```{r Study1 efficacy score and efficacy estimate ci}
+Study1.lmm_efficacy_estimate_ci = model_parameters(
+  Study1.lmm_efficacy_estimate,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_estimate_ci
+```
+
+```{r Study1 efficacy score and efficacy estimate plot}
+efficacy_estimate = Effect(
+  focal.predictors = "mbased_efficacy_m3",
+  mod = Study1.lmm_efficacy_estimate,
+  xlevels = list(
+    mbased_efficacy_m3 = seq(
+      from = min(Study1.dt_efficacy_lmm$mbased_efficacy_m3, na.rm = TRUE),
+      to = max(Study1.dt_efficacy_lmm$mbased_efficacy_m3, na.rm = TRUE),
+      length.out = 100)))
+
+Study1_efficacy_estimate = as.data.frame(efficacy_estimate)
+
+head(Study1_efficacy_estimate)
+
+Study1_efficacy_estimate.plot = ggplot(
+  Study1_efficacy_estimate,
+  aes(x = mbased_efficacy_m3, y = fit)) +
+  geom_ribbon(
+    aes(ymin = lower, ymax = upper),
+    fill = "#F8766D",
+    alpha = 0.15) +
+  geom_line(color = "#F8766D", linewidth = 1) +
+  labs(x = "efficacy estimate", y = "efficacy score") +
+  coord_cartesian(ylim = c(20, 100)) +
+  # scale_y_continuous(breaks = seq(8, 15, by = 1)) +
+  theme_classic()+gg.side
+
+Study1_efficacy_estimate.plot
+
+#ggsave("...../Study1_efficacy_estimate.pdf",Study1_efficacy_estimate.plot, width = 4.5, height = 6)
+```
+
+
+#   Study1 ERSP analysis
+##  Study1 feedback ERSP analysis
+### Study1 feedback ERP data
+```{r import Study1 feedback ERP data}
+#Study1.dt_interval = read_csv("D:/ExpAna/Study1/dt_interval_m3.csv") 
+Study1_ERPfeed_dt= read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Feed_alltrial.csv", 
+                        header = T)  %>%
+  dplyr::select(SubID,RoundID,RewP,P3,LPP)
+
+Study1_ERPfeed_combined =merge(Study1_ERPfeed_dt,Study1.dt_interval,
+                               by =c("SubID","RoundID"),all = TRUE) 
+```
+
+
+### Study1 social feedback RewP
+```{r Study1 social feedback RewP lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_feedback_RewP = lmerTest::lmer(RewP ~ age+gender+Social*Difference+
+                          (1+Social*Difference|SubID), 
+                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_feedback_RewP)
+Study1.lmm_feedback_RewP_anova = anova(Study1.lmm_feedback_RewP)
+Study1.lmm_feedback_RewP_anova
+```
+
+
+```{r Study1 social feedback RewP ci}
+Study1.lmm_feedback_RewP_ci = model_parameters(
+  Study1.lmm_feedback_RewP,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_feedback_RewP_ci
+```
+
+
+```{r Study1 social feedback RewP post hoc}
+lmm_feedback_RewP_post_hoc1 = summary(emmeans(Study1.lmm_feedback_RewP, 
+                                              list(pairwise~ sc|dif), 
+                                              adjust = "bonferroni",
+                                              pbkrtest.limit = 10000))
+summary(lmm_feedback_RewP_post_hoc1)
+
+lmm_feedback_RewP_post_hoc2 = summary(emmeans(Study1.lmm_feedback_RewP, 
+                                              list(pairwise~ dif|sc), 
+                                              adjust = "bonferroni",
+                                              pbkrtest.limit = 10000))
+summary(lmm_feedback_RewP_post_hoc2)
+```
+
+
+```{r Study1 social feedback RewP des}
+Study1_feedback_RewP.feed = Study1.dt_ERPfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(RewP)%>%
+  dplyr::group_by(Social) %>%
+  dplyr::summarise(RewP_mean = round(mean(RewP),3),
+                   RewP_sd = round(sd(RewP),3),
+                   RewP_se=RewP_sd/sqrt(35))
+Study1_feedback_RewP.feed
+```
+
+
+
+```{r Study1 social feedback RewP plot}
+Study1_feedback_RewP.sub = Study1.dt_ERPfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(RewP)%>%
+  dplyr::group_by(SubID,Social,Difference) %>%
+  dplyr::summarise(RewP_mean = round(mean(RewP),3),
+                   RewP_sd = round(sd(RewP),3),
+                   RewP_se=RewP_sd/sqrt(35))
+
+Study1_feedback_RewP = Study1_feedback_RewP.sub %>%  
+  dplyr::mutate(Social = factor(recode(Social, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_feedback_RewP.plot = ggbarplot(Study1_feedback_RewP, x = "Difference", 
+                                    y = "RewP_mean", 
+                                    fill = "Social", alpha = 0.7, 
+                                    ylab = "Amplitude(μV)", xlab = "Difference",
+                                    add.params = list(color = "Social"),
+                                    add = c("mean_se","jitter"),
+                                    palette = c("#1b7c3d", "#2b6a99"),
+                                    width = 0.45,
+                                    position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(1.5, 30)) +
+  theme(axis.text = element_text(size = 16, family = "serif"),
+        axis.title = element_text(size = 20, family = "serif"))
+
+Study1_feedback_RewP.plot = ggpar(Study1_feedback_RewP.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12, family = "serif"),
+    legend.title = element_text(size = 14, family = "serif", face = "bold")
+  )
+
+Study1_feedback_RewP.plot
+#ggsave("/Study1_RewP.pdf",Study1_feedback_RewP.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 efficacy_PE RewP
+```{r Study1 efficacy_PE RewP lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_RewP = lmerTest::lmer(RewP ~ age+gender+signed_PE_efficacy_m3+
+                          (1+signed_PE_efficacy_m3|SubID), 
+                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_efficacyPE_RewP)
+Study1.lmm_efficacyPE_RewP_anova = anova(Study1.lmm_efficacyPE_RewP)
+Study1.lmm_efficacyPE_RewP_anova
+```
+
+```{r Study1 efficacy_PE RewP ci}
+Study1.lmm_efficacyPE_RewP_ci = model_parameters(
+  Study1.lmm_efficacyPE_RewP,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacyPE_RewP_ci
+```
+
+
+
+### Study1 effort_PE RewP
+```{r Study1 effort_PE RewP lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_effortPE_RewP = lmerTest::lmer(RewP ~ age+gender+signed_PE_effort_m3+
+                          (1+signed_PE_effort_m3|SubID), 
+                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_effortPE_RewP)
+Study1.lmm_effortPE_RewP_anova = anova(Study1.lmm_effortPE_RewP)
+Study1.lmm_effortPE_RewP_anova
+```
+
+
+
+```{r Study1 effort_PE RewP ci}
+Study1.lmm_effortPE_RewP_ci = model_parameters(
+  Study1.lmm_effortPE_RewP,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effortPE_RewP_ci
+```
+
+
+### Study1 effort and efficacy combined
+```{r Study1 effort and efficacy_PE RewP}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                    levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+ 
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_combinedPE_RewP = lmerTest::lmer(RewP ~age+gender+signed_PE_efficacy_m3+
+                                          signed_PE_effort_m3+
+                                        (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+
+summary(Study1.lmm_combinedPE_RewP)
+Study1.lmm_combinedPE_RewP_anova = anova(Study1.lmm_combinedPE_RewP)
+Study1.lmm_combinedPE_RewP_anova
+```
+
+
+```{r Study1 effort and efficacy_PE RewP ci}
+Study1.lmm_combinedPE_RewP_ci = model_parameters(
+  Study1.lmm_combinedPE_RewP,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_combinedPE_RewP_ci
+```
+
+
+```{r all model RewP}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_RewP = lmerTest::lmer(RewP ~ age+gender+signed_PE_efficacy_m3+
+                          (1+signed_PE_efficacy_m3|SubID), 
+                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+Study1.lmm_effortPE_RewP = lmerTest::lmer(RewP ~ age+gender+signed_PE_effort_m3+
+                          (1+signed_PE_effort_m3|SubID), 
+                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+Study1.lmm_combinedPE_RewP = lmerTest::lmer(RewP ~age+gender+signed_PE_efficacy_m3+
+                                            signed_PE_effort_m3+
+                             (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+```
+
+```{r all model RewP}
+## Effort intention
+effort_sep = parameters::model_parameters(
+  Study1.lmm_effortPE_RewP,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation
+efficacy_sep = parameters::model_parameters(
+  Study1.lmm_efficacyPE_RewP,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Effort intention：joint
+effort_joint <- parameters::model_parameters(
+  Study1.lmm_combinedPE_RewP,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Joint model", 
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation：joint
+efficacy_joint <- parameters::model_parameters(
+  Study1.lmm_combinedPE_RewP,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+plot_RewP <- bind_rows(
+  effort_sep,
+  efficacy_sep,
+  effort_joint,
+  efficacy_joint)
+
+plot_RewP
+```
+
+```{r all model RewP}
+plot_RewP$Predictor = factor(
+  plot_RewP$Predictor,
+  levels = c("Efficacy expectation PE",
+             "Effort intention PE"))
+
+plot_RewP$Model = factor(
+  plot_RewP$Model,
+  levels = c("Joint model",
+             "Separate model"))
+
+model_RewP.plot = ggplot(plot_RewP,aes(x = b,
+                          y = Predictor,
+                          shape = Model,
+                          color = Model )) +
+
+  geom_vline(xintercept = 0,
+             color = "black",
+             linewidth = 0.7) +
+  
+  # 95% CI
+  geom_errorbarh(aes(xmin = CI_low,
+                     xmax = CI_high),
+                 height = 0,
+                 linewidth = 0.8,
+                 position = position_dodge(width = 0.55)) +
+  
+  # coefficient
+  geom_point(size = 3.5,
+             position = position_dodge(width = 0.55)) +
+
+  
+  scale_color_manual(values = c(
+    "Separate model" = "#D97973",
+      "Joint model" = "#47A6A0"))+
+  
+  labs(x = "Regression coefficient (b)",
+       y = NULL,
+       shape = NULL,
+       color = NULL) +
+
+  theme_classic(base_size = 14) +
+  
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 13),
+        legend.position = "bottom")+gg.side
+
+model_RewP.plot
+#ggsave("...Study1_model3_RewP.pdf",model_RewP.plot, width = 5.7, height = 6)
+```
+
+
+### Study1 social feedback P3
+```{r Study1 social feedback P3 lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_feedback_P3 = lmerTest::lmer(P3 ~ age+gender+Social*Difference+
+                          (1+Social*Difference|SubID), Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_feedback_P3)
+Study1.lmm_feedback_P3_anova = anova(Study1.lmm_feedback_P3)
+Study1.lmm_feedback_P3_anova
+```
+
+```{r Study1 social feedback P3 ci}
+Study1.lmm_feedback_P3_ci = model_parameters(
+  Study1.lmm_feedback_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_feedback_P3_ci
+```
+
+
+```{r Study1 social feedback P3 post hoc}
+lmm_feedback_P3_post_hoc1 = summary(emmeans(Study1.lmm_feedback_P3, 
+                                            list(pairwise~ Social|Difference), 
+                                            adjust = "bonferroni",
+                                            pbkrtest.limit = 10000))
+summary(lmm_feedback_P3_post_hoc1)
+
+lmm_feedback_P3_post_hoc2 = summary(emmeans(Study1.lmm_feedback_P3, 
+                                            list(pairwise~ Difference|Social), 
+                                            adjust = "bonferroni",
+                                            pbkrtest.limit = 10000))
+summary(lmm_feedback_P3_post_hoc2)
+```
+
+```{r Study1 social feedback P3 des}
+Study1_feedback_P3.feed = Study1.dt_ERPfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(P3)%>%
+  dplyr::group_by(Difference,Social) %>%
+  dplyr::summarise(P3_mean = round(mean(P3),3),
+                   P3_sd = round(sd(P3),3),
+                   P3_se= P3_sd/sqrt(35))
+Study1_feedback_P3.feed
+```
+
+```{r social feedback P3 plot}
+Study1_feedback_P3.sub = Study1.dt_ERPfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(P3)%>%
+  dplyr::group_by(SubID,Social,Difference) %>%
+  dplyr::summarise(P3_mean = round(mean(P3),3),
+                   P3_sd = round(sd(P3),3),
+                   P3_se= P3_sd/sqrt(35))
+
+Study1_feedback_P3 = Study1_feedback_P3.sub %>%  
+  dplyr::mutate(Social = factor(recode(Social, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_feedback_P3.plot = ggbarplot(Study1_feedback_P3, x = "Difference", y = "P3_mean", 
+                                    fill = "Social", alpha = 0.7,
+                         ylab = "Amplitude(μV)", xlab = "Difference",
+                         add.params = list(color = "Social"),
+                         add = c("mean_se","jitter"),
+                         palette = c("#1b7c3d", "#2b6a99"), width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(1.5, 30)) +
+  theme(axis.text = element_text(size = 16, family = "serif"),
+        axis.title = element_text(size = 20, family = "serif"))
+
+Study1_feedback_P3.plot = ggpar(Study1_feedback_P3.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12, family = "serif"),
+    legend.title = element_text(size = 14, family = "serif", face = "bold")
+  )
+
+Study1_feedback_P3.plot
+#ggsave("...../Study1_P3.pdf",Study1_feedback_P3.plot, width = 6.4, height = 6)
+```
+
+### Study1 effort_PE P3
+```{r Study1 effort_PE P3 lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                    levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_effortPE_P3 = lmerTest::lmer(P3 ~ age+gender+signed_PE_effort_m3+
+                                          (1+signed_PE_effort_m3|SubID), 
+                                        Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_effortPE_P3)
+Study1.lmm_effortPE_P3_anova = anova(Study1.lmm_effortPE_P3)
+Study1.lmm_effortPE_P3_anova
+```
+
+
+```{r effort_PE P3 ci}
+Study1.lmm_effortPE_P3_ci = model_parameters(
+  Study1.lmm_effortPE_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effortPE_P3_ci
+```
+
+
+
+### Study1 efficacy_PE P3
+```{r Study1 efficacy_PE P3 lmm}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                    levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_P3 = lmerTest::lmer(P3 ~ age+gender+signed_PE_efficacy_m3+
+                                            (1+signed_PE_efficacy_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+summary(Study1.lmm_efficacyPE_P3)
+Study1.lmm_efficacyPE_P3_anova = anova(Study1.lmm_efficacyPE_P3)
+Study1.lmm_efficacyPE_P3_anova
+```
+
+
+
+```{r Study1 efficacy_PE P3 ci}
+Study1.lmm_efficacyPE_P3_ci = model_parameters(
+  Study1.lmm_efficacyPE_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacyPE_P3_ci
+```
+
+### Study1 effort and efficacy combined
+```{r Study1 effort and efficacy_PE P3}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  dplyr::filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                    levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+ 
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_combinedPE_P3 = lmerTest::lmer(P3 ~age+gender+signed_PE_efficacy_m3+
+                                         signed_PE_effort_m3+
+                                        (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+summary(Study1.lmm_combinedPE_P3)
+Study1.lmm_combinedPE_P3_P3_anova = anova(Study1.lmm_combinedPE_P3)
+Study1.lmm_combinedPE_P3_P3_anova
+```
+
+
+
+```{r Study1 effort and efficacy PE P3 ci}
+Study1.lmm_combinedPE_P3_ci = model_parameters(
+  Study1.lmm_combinedPE_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_combinedPE_P3_ci
+```
+
+```{r all model P3}
+Study1.dt_ERPfeed_lmm = Study1_ERPfeed_combined %>%
+  filter(Social == "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                    levels = c("Large", "Small"))) %>%
+  dplyr::mutate(meanCongruency = as.numeric(meanCongruency))%>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_ERPfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_P3 = lmerTest::lmer(P3 ~ age+gender+signed_PE_efficacy_m3+
+                                            (1+signed_PE_efficacy_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+Study1.lmm_effortPE_P3 = lmerTest::lmer(P3 ~ age+gender+signed_PE_effort_m3+
+                                          (1+signed_PE_effort_m3|SubID), 
+                                        Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+Study1.lmm_combinedPE_P3 = lmerTest::lmer(P3 ~age+gender+signed_PE_efficacy_m3+
+                                            signed_PE_effort_m3+
+                                            (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_ERPfeed_lmm, REML=FALSE)
+
+```
+
+
+
+
+```{r all model P3}
+## Effort intention
+effort_sep <- parameters::model_parameters(
+  Study1.lmm_effortPE_P3,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation
+efficacy_sep <- parameters::model_parameters(
+  Study1.lmm_efficacyPE_P3,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Effort intention：joint
+effort_joint <- parameters::model_parameters(
+  Study1.lmm_combinedPE_P3,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation：joint
+efficacy_joint <- parameters::model_parameters(
+  Study1.lmm_combinedPE_P3,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+plot_P3 <- bind_rows(
+  effort_sep,
+  efficacy_sep,
+  effort_joint,
+  efficacy_joint)
+
+plot_P3
+```
+
+```{r all model P3}
+plot_P3$Predictor = factor(
+  plot_P3$Predictor,
+  levels = c("Efficacy expectation PE",
+             "Effort intention PE"))
+
+plot_P3$Model = factor(
+  plot_P3$Model,
+  levels = c("Joint model",
+             "Separate model"))
+
+model_P3.plot = ggplot(plot_P3,
+                       aes(x = b,
+                           y = Predictor,
+                           shape = Model,
+                           color = Model)) +
+  
+  geom_vline(xintercept = 0,
+             color = "black",
+             linewidth = 0.7) +
+
+  geom_errorbarh(aes(xmin = CI_low,
+                     xmax = CI_high),
+                 height = 0,
+                 linewidth = 0.8,
+                 position = position_dodge(width = 0.55)) +
+  
+  # coefficient
+  geom_point(size = 3.5,
+             position = position_dodge(width = 0.55)) +
+  
+  scale_color_manual(values = c(
+    "Separate model" = "#D97973",
+      "Joint model" = "#47A6A0")) +
+  
+  labs(x = "Regression coefficient (b)",
+       y = NULL,
+       shape = NULL,
+       color = NULL)+
+  
+  theme_classic(base_size = 14) +
+  
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 13),
+        legend.position = "bottom")+gg.side
+
+model_P3.plot
+
+#ggsave("...../plot/Study1_model3_P3.pdf",model_P3.plot, width = 5.7, height = 6)
+```
+### Study1 feedback TFA data
+```{r import feedback TFA data}
+#Study1_interval = read_csv("Study1_interval.csv")
+
+Study1_TFAfeed_dt= read.csv("C:/Users/ruirui/Desktop/文章3/Study1/TFAfeed.csv", 
+                           header = T)  %>%
+  dplyr::select(SubID,RoundID,Feed_delta)
+
+Study1_TFAfeed_combined = merge(Study1_TFAfeed_dt,Study1.dt_interval,
+                                by =c("SubID","RoundID"), all = TRUE)
+```
+
+### Study1 social feedback delta
+```{r Study1 social feedback_delta lmm}
+Study1.dt_TFAfeed_lmm = Study1_TFAfeed_combined %>%
+  dplyr::filter(Social== "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference= factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$gender) = contr.sum
+
+Study1.lmm_feedback_delta = lmerTest::lmer(Feed_delta ~age+gender+Social*Difference+
+                                  (1+Social*Difference|SubID), Study1.dt_TFAfeed_lmm, REML=FALSE)
+Study1.lmm_feedback_delta_anova = anova(Study1.lmm_feedback_delta)
+Study1.lmm_feedback_delta_anova 
+summary(Study1.lmm_feedback_delta)
+```
+```{r Study1 social feedback delta des}
+Study1_feedback_delta.feed = Study1.dt_TFAfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(Feed_delta)%>%
+  dplyr::group_by(Social) %>%
+  dplyr::summarise(delta_mean = round(mean(Feed_delta),3),
+                   delta_sd = round(sd(Feed_delta),3),
+                   delta_se= delta_sd/sqrt(35))
+Study1_feedback_delta.feed
+```
+
+
+```{r Study1 social feedback delta ci}
+Study1.lmm_feedback_delta_ci = model_parameters(
+  Study1.lmm_feedback_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_feedback_delta_ci
+```
+
+
+```{r Study1 social feedback delta plot}
+Study1_feedback_delta.sub = Study1.dt_TFAfeed_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(Feed_delta)%>%
+  dplyr::group_by(SubID,Social,Difference) %>%
+  dplyr::summarise(delta_mean = round(mean(Feed_delta),3),
+                   delta_sd = round(sd(Feed_delta),3),
+                   delta_se= delta_sd/sqrt(35))
+
+Study1_feedback_delta = Study1_feedback_delta.sub %>%  
+  dplyr::mutate(Social = factor(recode(Social, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_feedback_delta.plot = ggbarplot(Study1_feedback_delta, x = "Difference", y = "delta_mean", 
+                                    fill = "Social", alpha = 0.7,
+                                    ylab = "Power(db)", xlab = "Difference",
+                                    add.params = list(color = "Social"),
+                                    add = c("mean_se","jitter"),
+                                    palette = c("#1b7c3d", "#2b6a99"), 
+                                    width = 0.45,
+                                    position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(-1, 8)) +
+  theme(axis.text = element_text(size = 16, family = "serif"),
+        axis.title = element_text(size = 20, family = "serif"))
+
+Study1_feedback_delta.plot = ggpar(Study1_feedback_delta.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12, family = "serif"),
+    legend.title = element_text(size = 14, family = "serif", face = "bold")
+  )
+
+Study1_feedback_delta.plot
+#ggsave("/Study1_feedbackdelta.pdf",Study1_feedback_delta.plot, width = 6, height = 6)
+```
+
+### Study1 effort_PE fb-delta
+```{r Study1 effort_PE fb-delta lmm}
+Study1.dt_TFAfeed_lmm = Study1_TFAfeed_combined %>%
+  dplyr::filter(Social== "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference= factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$gender) = contr.sum
+
+Study1.lmm_effortPE_delta = lmerTest::lmer(Feed_delta ~ age+gender+signed_PE_effort_m3+
+                                          (1+signed_PE_effort_m3|SubID), 
+                                        Study1.dt_TFAfeed_lmm, REML=FALSE)
+summary(Study1.lmm_effortPE_delta)
+Study1.lmm_effortPE_delta_anova = anova(Study1.lmm_effortPE_delta)
+Study1.lmm_effortPE_delta_anova
+```
+```{r Study1 effort_PE fb-delta ci}
+Study1.lmm_effortPE_delta_ci = model_parameters(
+  Study1.lmm_effortPE_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effortPE_delta_ci
+```
+
+
+### Study1 efficacy_PE delta
+```{r Study1 efficacy_PE delta lmm}
+Study1.dt_TFAfeed_lmm = Study1_TFAfeed_combined %>%
+  dplyr::filter(Social== "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference= factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_delta = lmerTest::lmer(Feed_delta ~ age+gender+signed_PE_efficacy_m3+
+                                            (1+signed_PE_efficacy_m3|SubID), 
+                                          Study1.dt_TFAfeed_lmm, REML=FALSE)
+summary(Study1.lmm_efficacyPE_delta)
+Study1.lmm_efficacyPE_delta_anova = anova(Study1.lmm_efficacyPE_delta)
+Study1.lmm_efficacyPE_delta_anova
+```
+
+
+
+```{r Study1 efficacy_PE delta ci}
+Study1.lmm_efficacyPE_delta_ci = model_parameters(
+  Study1.lmm_efficacyPE_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacyPE_delta_ci
+```
+
+
+### Study1 effort and efficacy combined
+```{r effort and efficacy_PE delta}
+Study1.dt_TFAfeed_lmm = Study1_TFAfeed_combined %>%
+  dplyr::filter(Social== "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference= factor(recode(Difference, "1" = "Large", "2" = "Small"), 
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$gender) = contr.sum
+
+Study1.lmm_combinedPE_delta = lmerTest::lmer(Feed_delta ~age+gender+signed_PE_efficacy_m3+
+                                          signed_PE_effort_m3+
+                                        (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_TFAfeed_lmm, REML=FALSE)
+
+
+summary(Study1.lmm_combinedPE_delta)
+Study1.lmm_combinedPE_delta_anova = anova(Study1.lmm_combinedPE_delta)
+Study1.lmm_combinedPE_delta_anova
+```
+
+
+
+```{r Study1 effort and efficacy PE delta ci}
+Study1.lmm_combinedPE_delta_ci = model_parameters(
+  Study1.lmm_combinedPE_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_combinedPE_delta_ci
+```
+
+
+
+```{r all model delta}
+Study1.dt_TFAfeed_lmm = Study1_TFAfeed_combined %>%
+  filter(Social== "1"|Social == "2") %>%
+  dplyr::mutate(Social = factor(recode(Social,"1" = "Downward", "2" = "Upward"), 
+                                  levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference= factor(recode(Difference, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAfeed_lmm$Social) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$Difference) = contr.sum
+contrasts(Study1.dt_TFAfeed_lmm$gender) = contr.sum
+
+Study1.lmm_efficacyPE_delta = lmerTest::lmer(Feed_delta ~ age+gender+signed_PE_efficacy_m3+
+                                            (1+signed_PE_efficacy_m3|SubID), 
+                                          Study1.dt_TFAfeed_lmm, REML=FALSE)
+
+Study1.lmm_effortPE_delta = lmerTest::lmer(Feed_delta ~ age+gender+signed_PE_effort_m3+
+                                          (1+signed_PE_effort_m3|SubID), 
+                                        Study1.dt_TFAfeed_lmm, REML=FALSE)
+
+Study1.lmm_combinedPE_delta = lmerTest::lmer(Feed_delta ~age+gender+signed_PE_efficacy_m3+
+                                            signed_PE_effort_m3+
+                                            (1+signed_PE_efficacy_m3+signed_PE_effort_m3|SubID), 
+                                          Study1.dt_TFAfeed_lmm, REML=FALSE)
+
+```
+
+```{r all model delta}
+## Effort intention
+effort_sep = parameters::model_parameters(
+  Study1.lmm_effortPE_delta,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation
+efficacy_sep = parameters::model_parameters(
+  Study1.lmm_efficacyPE_delta,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Separate model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Effort intention：joint
+effort_joint <- parameters::model_parameters(
+  Study1.lmm_combinedPE_delta,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_effort_m3") %>%
+  transmute(Predictor = "Effort intention PE",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+## Efficacy expectation：joint
+efficacy_joint = parameters::model_parameters(
+  Study1.lmm_combinedPE_delta,
+  ci = 0.95,
+  ci_method = "satterthwaite",
+  effects = "fixed") %>%
+  filter(Parameter == "signed_PE_efficacy_m3") %>%
+  transmute(Predictor = "Efficacy expectation PE",
+            Model = "Joint model",
+            b = Coefficient,
+            CI_low = CI_low,
+            CI_high = CI_high,
+            p = p)
+
+plot_delta = bind_rows(
+  effort_sep,
+  efficacy_sep,
+  effort_joint,
+  efficacy_joint)
+
+plot_delta
+```
+
+```{r all model delta}
+plot_delta$Predictor <- factor(
+  plot_delta$Predictor,
+  levels = c("Efficacy expectation PE",
+             "Effort intention PE"))
+
+plot_delta$Model <- factor(
+  plot_delta$Model,
+  levels = c("Joint model",
+             "Separate model"))
+
+model_delta.plot = ggplot(plot_delta,
+                          aes(x = b,
+                              y = Predictor,
+                              shape = Model,
+                              color = Model )) +
+
+  geom_vline(xintercept = 0,
+             color = "black",
+             linewidth = 0.7) +
+
+  geom_errorbarh(aes(xmin = CI_low,
+                     xmax = CI_high),
+                 height = 0,
+                 linewidth = 0.8,
+                 position = position_dodge(width = 0.55)) +
+
+  geom_point(size = 3.5,
+             position = position_dodge(width = 0.55)) +
+  
+  scale_color_manual(values = c(
+    "Separate model" = "#D97973",
+    "Joint model" = "#47A6A0")) +
+  
+  labs(x = "Regression coefficient (b)",
+       y = NULL,
+       shape = NULL,
+       color = NULL) +
+  
+  theme_classic(base_size = 14) +
+  
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 13),
+        legend.position = "bottom")+gg.side
+
+model_delta.plot
+#ggsave("....../Study1_model3_delta.pdf",model_delta.plot, width = 5.7, height = 6)
+```
+
+
+##  Study1 cue ERSP analysis
+### Study1 cue ERP data
+```{r import cue ERP data}
+#Study1.dt_interval = read_csv("D:/ExpAna/Study1/dt_interval_m3.csv")
+Study1_ERPcue_dt= read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Cue_alltrial.csv", 
+                        header = T) %>%
+ dplyr::select(SubID,RoundID,P3)
+
+Study1_ERPcue_combined =merge(Study1_ERPcue_dt,Study1.dt_interval,
+                              by =c("SubID","RoundID"), all = TRUE)
+```
+
+
+### Study1 social feedback cue_P3
+```{r Study1 social feedback cue_P3 lmm}
+Study1.dt_ERPcue_lmm = Study1_ERPcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$gender) = contr.sum
+
+Study1.lmm_cue_P3 = lmerTest::lmer(P3 ~ age+gender+SocialPrev*DiffPrev+
+                          (1+SocialPrev*DiffPrev|SubID), Study1.dt_ERPcue_lmm, REML=FALSE)
+summary(Study1.lmm_cue_P3)
+Study1.lmm_cue_P3_anova = anova(Study1.lmm_cue_P3)
+Study1.lmm_cue_P3_anova
+```
+
+
+```{r Study1 social feedback cue_P3 des}
+Study1_cue_P3.feed = Study1.dt_ERPcue_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(P3)%>%
+  dplyr::group_by(DiffPrev,SocialPrev) %>%
+  dplyr::summarise(P3_mean = round(mean(P3),3),
+                   P3_sd = round(sd(P3),3),
+                   P3_se= P3_sd/sqrt(35))
+Study1_cue_P3.feed
+```
+
+```{r Study1 social feedback cue_P3 ci}
+Study1.lmm_cue_P3_ci = model_parameters(
+  Study1.lmm_cue_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_cue_P3_ci
+```
+
+```{r Study1 social feedback cue_P3 post hoc}
+lmm_cue_P3_post_hoc1 = summary(emmeans(Study1.lmm_cue_P3, 
+                                       list(pairwise~ SocialPrev|DiffPrev), 
+                                       adjust = "bonferroni",
+                                       pbkrtest.limit = 10000))
+summary(lmm_cue_P3_post_hoc1)
+
+lmm_cue_P3_post_hoc2 = summary(emmeans(Study1.lmm_cue_P3, 
+                                       list(pairwise~ DiffPrev|SocialPrev),
+                                       adjust = "bonferroni",
+                                       pbkrtest.limit = 10000))
+summary(lmm_cue_P3_post_hoc2)
+```
+
+```{r Study1 social feedback cue_P3 plot}
+Study1_cue_P3.sub = Study1.dt_ERPcue_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(P3)%>%
+  dplyr::group_by(SubID,SocialPrev,DiffPrev) %>%
+  dplyr::summarise(P3_mean = round(mean(P3),3),
+                   P3_sd = round(sd(P3),3),
+                   P3_se= P3_sd/sqrt(35))
+
+Study1_cue_P3 = Study1_cue_P3.sub %>%  
+  dplyr::mutate(Social = factor(recode(SocialPrev, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(DiffPrev, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_cue_P3.plot = ggbarplot(Study1_cue_P3, x = "Difference", y = "P3_mean", 
+                                    fill = "Social", alpha = 0.7,
+                         ylab = "Amplitude(μV)", xlab = "Difference",
+                         add.params = list(color = "Social"),
+                         add = c("mean_se","jitter"),
+                         palette = c("#1b7c3d", "#2b6a99"), width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(-6, 12)) +
+  theme(axis.text = element_text(size = 16, family = "serif"),
+        axis.title = element_text(size = 20, family = "serif"))
+
+Study1_cue_P3.plot = ggpar(Study1_cue_P3.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12, family = "serif"),
+    legend.title = element_text(size = 14, family = "serif", face = "bold")
+  )
+
+Study1_cue_P3.plot
+#ggsave("...../Study1_cue_P3.pdf",Study1_cue_P3.plot, width = 6.4, height = 6)
+```
+
+
+### Study1 model effort estimate cue_P3
+```{r Study1 effort estimate cue_P3 lmm}
+### linear mixed-effects model cue_P3
+Study1.dt_ERPcue_lmm = Study1_ERPcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$gender) = contr.sum
+
+Study1.lmm_effort_cue_P3 = lmerTest::lmer(P3 ~ age+gender+mbased_effort_pre_m3+
+                                        (1+mbased_effort_pre_m3|SubID), 
+                                      Study1.dt_ERPcue_lmm, REML=FALSE)
+
+summary(Study1.lmm_effort_cue_P3)
+Study1.lmm_effort_cue_P3_anova = anova(Study1.lmm_effort_cue_P3)
+Study1.lmm_effort_cue_P3_anova 
+```
+
+
+
+```{r Study1 effort estimate cue_P3 ci}
+Study1.lmm_effort_cue_P3_ci = model_parameters(
+  Study1.lmm_effort_cue_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_cue_P3_ci
+```
+### Study1 model efficacy estimate cue_P3
+```{r Study1 efficacy estimate cue_P3 lmm}
+### linear mixed-effects model cue_P3
+Study1.dt_ERPcue_lmm = Study1_ERPcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_ERPcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_ERPcue_lmm$gender) = contr.sum
+
+
+Study1.lmm_efficacy_cue_P3 = lmerTest::lmer(P3 ~ age+gender+mbased_efficacy_pre_m3+
+                                          (1+mbased_efficacy_pre_m3|SubID), 
+                                        Study1.dt_ERPcue_lmm, REML=FALSE)
+
+summary(Study1.lmm_efficacy_cue_P3)
+Study1.lmm_efficacy_cue_P3_anova = anova(Study1.lmm_efficacy_cue_P3)
+Study1.lmm_efficacy_cue_P3_anova 
+```
+
+```{r Study1 efficacy estimate cue_P3}
+Study1.lmm_efficacy_cue_P3_ci = model_parameters(
+  Study1.lmm_efficacy_cue_P3,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_cue_P3_ci
+```
+### Study1 cue TFA data
+```{r import cue TFA data}
+#Study1_interval = read_csv("D:/ExpAna/Study1/Study1_beha/Study1_interval.csv")
+
+Study1_TFAcue_dt= read.csv("C:/Users/ruirui/Desktop/文章3/Study1/TFAcue.csv", 
+                           header = T)  %>%
+  dplyr::select(SubID,RoundID,Cue_delta)
+
+Study1_TFAcue_combined = merge(Study1_TFAcue_dt,Study1.dt_interval,
+                               by =c("SubID","RoundID"), all = TRUE)
+```
+
+### Study1 social feedback cue_delta
+```{r Study1 social feedback cue_delta lmm}
+Study1.dt_TFAcue_lmm = Study1_TFAcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$gender) = contr.sum
+
+Study1.lmm_cue_delta = lmerTest::lmer(Cue_delta ~ age+gender+SocialPrev*DiffPrev+
+                          (1+SocialPrev*DiffPrev|SubID),
+                          Study1.dt_TFAcue_lmm, REML=FALSE)
+summary(Study1.lmm_cue_delta)
+Study1.lmm_cue_delta_anova = anova(Study1.lmm_cue_delta)
+Study1.lmm_cue_delta_anova
+```
+
+```{r Study1 social feedback cue_delta des}
+Study1_cue_delta.feed = Study1.dt_TFAcue_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(Cue_delta)%>%
+  dplyr::group_by(DiffPrev,SocialPrev) %>%
+  dplyr::summarise(delta_mean = round(mean(Cue_delta),3),
+                   delta_sd = round(sd(Cue_delta),3),
+                   delta_se= delta_sd/sqrt(35))
+Study1_cue_delta.feed
+```
+
+```{r Study1 social feedback cue_delta ci}
+Study1.lmm_cue_delta_ci = model_parameters(
+  Study1.lmm_cue_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_cue_delta_ci
+```
+
+
+```{r Study1 social feedback cue_delta post hoc}
+lmm_cue_delta_post_hoc1 = summary(emmeans(Study1.lmm_cue_delta, 
+                                          list(pairwise~ SocialPrev|DiffPrev),
+                                          adjust = "bonferroni",
+                                          pbkrtest.limit = 10000))
+summary(lmm_cue_delta_post_hoc1)
+
+lmm_cue_delta_post_hoc2 = summary(emmeans(Study1.lmm_cue_delta, 
+                                          list(pairwise~ DiffPrev|SocialPrev), 
+                                          adjust = "bonferroni",
+                                          pbkrtest.limit = 10000))
+summary(lmm_cue_delta_post_hoc2)
+```
+
+```{r Study1 social feedback cue_delta plot}
+Study1_cue_delta.sub = Study1.dt_TFAcue_lmm %>%
+  dplyr::group_by(SubID) %>%
+  drop_na(Cue_delta)%>%
+  dplyr::group_by(SubID,SocialPrev,DiffPrev) %>%
+  dplyr::summarise(delta_mean = round(mean(Cue_delta),3),
+                   delta_sd = round(sd(Cue_delta),3),
+                   delta_se= delta_sd/sqrt(35))
+
+Study1_cue_delta = Study1_cue_delta.sub %>%  
+  dplyr::mutate(Social = factor(recode(SocialPrev, "1" = "Downward", "2" = "Upward"), 
+                                levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(Difference = factor(recode(DiffPrev, "1" = "Large", "2" = "Small"), 
+                             levels = c("Large", "Small")))
+
+Study1_cue_delta.plot = ggbarplot(Study1_cue_delta, x = "Difference", y = "delta_mean", 
+                                fill = "Social", alpha = 0.7,
+                                ylab = "Amplitude(μV)", 
+                                xlab = "Difference",
+                                add.params = list(color = "Social"),
+                                add = c("mean_se","jitter"),
+                                palette = c("#1b7c3d", "#2b6a99"), 
+                                width = 0.45,
+                         position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(-1, 6)) +
+  theme(axis.text = element_text(size = 16, family = "serif"),
+        axis.title = element_text(size = 20, family = "serif"))
+
+Study1_cue_delta.plot = ggpar(Study1_cue_delta.plot, legend = 'right') +
+  labs(fill = "Social Comparison") +  
+  theme(
+    legend.text = element_text(size = 12, family = "serif"),
+    legend.title = element_text(size = 14, family = "serif", face = "bold"))
+
+Study1_cue_delta.plot
+#ggsave("...../Study1_cuedelta.pdf",Study1_cue_delta.plot, width = 6, height = 6)
+```
+
+### Study1 model effort estimate cue_delta
+```{r Study1 effort estimate cue_delta lmm}
+### linear mixed-effects model cue_delta
+Study1.dt_TFAcue_lmm = Study1_TFAcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$gender) = contr.sum
+
+Study1.lmm_effort_cue_delta = lmerTest::lmer(Cue_delta ~ age+gender+mbased_effort_pre_m3+
+                                          (1+mbased_effort_pre_m3|SubID), 
+                                        Study1.dt_TFAcue_lmm, REML=FALSE)
+
+summary(Study1.lmm_effort_cue_delta)
+Study1.lmm_effort_cue_delta_anova = anova(Study1.lmm_effort_cue_delta)
+Study1.lmm_effort_cue_delta_anova 
+```
+
+
+
+```{r Study1 effort estimate cue_delta}
+Study1.lmm_effort_cue_delta_ci = model_parameters(
+  Study1.lmm_effort_cue_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_effort_cue_delta_ci
+```
+
+
+
+
+
+### Study1 model efficacy estimate cue_delta
+```{r Study1 efficacy estimate Cue_delta lmm}
+### linear mixed-effects model Cue_delta
+Study1.dt_TFAcue_lmm = Study1_TFAcue_combined %>%
+  dplyr::filter(SocialPrev == "1"|SocialPrev == "2") %>%
+  dplyr::mutate(SocialPrev = factor(recode(SocialPrev,"1" = "Downward", "2" = "Upward"),
+                                    levels = c("Downward", "Upward"))) %>%
+  dplyr::mutate(DiffPrev= factor(recode(DiffPrev, "1" = "Large", "2" = "Small"),
+                                 levels = c("Large", "Small"))) %>%
+  mutate(meanCongruency = as.numeric(meanCongruency)) %>%
+  dplyr::mutate(RoundID = as.numeric(RoundID))%>%
+  dplyr::mutate(gender = factor(gender))
+
+contrasts(Study1.dt_TFAcue_lmm$SocialPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$DiffPrev) = contr.sum
+contrasts(Study1.dt_TFAcue_lmm$gender) = contr.sum
+
+Study1.lmm_efficacy_cue_delta = lmerTest::lmer(Cue_delta ~ age+gender+mbased_efficacy_pre_m3+
+                                            (1+mbased_efficacy_pre_m3|SubID), 
+                                          Study1.dt_TFAcue_lmm, REML=FALSE)
+
+summary(Study1.lmm_efficacy_cue_delta)
+Study1.lmm_efficacy_cue_delta_anova = anova(Study1.lmm_efficacy_cue_delta)
+Study1.lmm_efficacy_cue_delta_anova 
+```
+
+```{r Study1 efficacy estimate cue_delta}
+Study1.lmm_efficacy_cue_delta_ci = model_parameters(
+  Study1.lmm_efficacy_cue_delta,
+  standardize = NULL,
+  ci_method = "satterthwaite",
+  ci = 0.95,
+  effects = "all",
+  summary = getOption("parameters_mixed_summary", FALSE),
+  digits = 3)
+
+Study1.lmm_efficacy_cue_delta_ci
+```
+
+
+
+## Study1 HDDM
+### Study1 feedback hddm
+```{r Study1 feedback hddm trace}
+Study1_feedback.hddm = read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Study1_feedback_diff_traces.csv")
+
+Study1_feedback.traces = Study1_feedback.hddm %>%
+  dplyr::select( v_Intercept,
+                 v_comparison.T.downward.,
+                 v_difference.T.large.,
+                 v_comparison.T.downward..difference.T.large.,
+                 a_Intercept,
+                 a_comparison.T.downward.,
+                 a_difference.T.large.,
+                 a_comparison.T.downward..difference.T.large. ) %>%
+  
+  dplyr::rename(v_feed = v_comparison.T.downward.,
+                v_diff = v_difference.T.large.,
+                v_interaction = v_comparison.T.downward..difference.T.large.,
+                a_feed = a_comparison.T.downward.,
+                a_diff = a_difference.T.large.,
+                a_interaction = a_comparison.T.downward..difference.T.large.) %>%
+  
+  dplyr::mutate(v_feed_main = v_feed + 0.5 * v_interaction,
+                v_diff_main = v_diff + 0.5 * v_interaction,
+                v_DownUp_small = v_feed,
+                v_DownUp_large = v_feed + v_interaction,
+                v_LargeSmall_upward = v_diff,
+                v_LargeSmall_downward = v_diff + v_interaction,
+    
+                a_feed_main = a_feed + 0.5 * a_interaction,
+                a_diff_main = a_diff + 0.5 * a_interaction,
+                a_DownUp_small = a_feed,
+                a_DownUp_large = a_feed + a_interaction,
+                a_LargeSmall_upward = a_diff,
+                a_LargeSmall_downward = a_diff + a_interaction)
+```
+
+
+
+```{r Study1 feedback hddm drift rate test}
+## Add the posterior probabilities
+# Drift rate
+# Feed_main: Down - Up
+# Diff_main:  Large - Small
+# Interaction: (Down - Up)Large - (Down - Up)Small
+# v_DownUp_easy: Down - Up | Small
+# v_DownUp_hard: Down - Up | Large
+# v_HardEasy_upward: Large - Small | Upward
+# v_HardEasy_downward: Large - Small | Downward
+
+drift.tests = c(
+  "v_feed_main > 0",
+  "v_diff_main < 0",
+  "v_interaction > 0",
+  "v_DownUp_small > 0",
+  "v_DownUp_large > 0")
+
+drift.hypotheses = lapply(
+  drift.tests,
+  function(x) hypothesis(Study1_feedback.traces, x))
+
+names(drift.hypotheses) = drift.tests
+
+Study1_feedback.results.drift = data.frame(
+  test = drift.tests,
+  Post.Prob = unname(sapply(drift.hypotheses, function(x) x$hypothesis$Post.Prob)),
+  estimate = unname(sapply(drift.hypotheses, function(x) x$hypothesis$Estimate)),
+  ci.lower = unname(sapply(drift.hypotheses, function(x) x$hypothesis$CI.Lower)),
+  ci.upper = unname(sapply(drift.hypotheses, function(x) x$hypothesis$CI.Upper)))
+
+Study1_feedback.results.drift
+```
+
+
+```{r Study1 feedback hddm threshold test}
+## Add the posterior probabilities
+# Threshold
+# Feed_main: Down - Up
+# Diff_main:  Large - Small
+# Interaction: (Down - Up)Large - (Down - Up)Small
+# v_DownUp_easy: Down - Up | Small
+# v_DownUp_hard: Down - Up | Large
+th.tests = c(
+  "a_feed_main < 0",
+  "a_diff_main < 0",
+  "a_interaction < 0",
+  "a_DownUp_small > 0",
+  "a_DownUp_large < 0")
+
+th.hypotheses = lapply(
+  th.tests,
+  function(x) hypothesis(Study1_feedback.traces, x))
+
+Study1_feedback.results.th = data.frame(
+  test = th.tests,
+  Post.Prob = unname(sapply(th.hypotheses, function(x) x$hypothesis$Post.Prob)),
+  estimate = unname(sapply(th.hypotheses, function(x) x$hypothesis$Estimate)),
+  ci.lower = unname(sapply(th.hypotheses, function(x) x$hypothesis$CI.Lower)),
+  ci.upper = unname(sapply(th.hypotheses, function(x) x$hypothesis$CI.Upper)))
+
+Study1_feedback.results.th
+```
+
+
+```{r Study1 feedback hddm plot}
+###plot
+Study1_feedback.plot = Study1_feedback.traces 
+
+Study1_feedback.drift.plot <- dplyr::bind_rows(
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = v_feed_main,
+      Category = "Direction"),
+  
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = v_diff_main ,
+      Category = "Discrepancy"),
+  
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = v_interaction ,
+      Category = "Interaction"))
+
+Study1_feedback.drift.hddm = ggplot(Study1_feedback.drift.plot, 
+                                aes(x = value, fill = Category)) +
+  geom_density(alpha = 0.4, aes(color = Category)) +
+  scale_fill_manual(values = c('#93BED9','#91AD51','#EABFBB')) +
+  scale_color_manual(values = c('#93BED9','#91AD51','#EABFBB')) +  
+  labs(x = 'Drift Rate', y = 'Density')+gg.side
+ 
+Study1_feedback.drift.hddm
+
+
+#ggsave("...../Study1_feedback_drift.hddm.plot.pdf",Study1_feedback.drift.hddm,width = 6.2, height = 5)
+```
+
+
+```{r Study1 feedback hddm plot}
+Study1_feedback.threshold.plot = dplyr::bind_rows(
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = a_feed_main,
+      Category = "Direction"),
+  
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = a_diff_main ,
+      Category = "Discrepancy"),
+  
+  Study1_feedback.plot %>%
+    dplyr::transmute(
+      value = a_interaction,
+      Category = "Interaction"))
+  
+Study1_feedback.threshold.hddm = ggplot(Study1_feedback.threshold.plot, 
+                                aes(x = value, fill = Category)) +
+  geom_density(alpha = 0.4, aes(color = Category)) +
+  scale_fill_manual(values = c('#93BED9','#91AD51','#EABFBB')) +
+  scale_color_manual(values = c('#93BED9','#91AD51','#EABFBB')) +  
+  labs(x = 'Threshold', y = 'Density')+gg.side
+ 
+Study1_feedback.threshold.hddm
+
+#ggsave("....../Study1_feedback_threshold.hddm.plot.pdf",Study1_feedback.threshold.hddm,width = 6.2, height = 5)
+```
+
+
+### Study1 effort estimate hddm
+```{r Study1 effort hddm test}
+###model2 effort ###
+Study1_effort.hddm = read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Study1_effort_cong_traces.csv")
+
+Study1_effort.traces <- Study1_effort.hddm %>% 
+  
+  dplyr::select(v_Intercept,
+                v_mbased_effort_pre,
+                a_Intercept,
+                a_mbased_effort_pre)
+
+# Add the posterior probabilities
+Study1_effort_hypotheses = list(
+  t1 = hypothesis(Study1_effort.traces, "v_Intercept > 0"),
+  t2 = hypothesis(Study1_effort.traces, "v_mbased_effort_pre > 0"),
+  t3 = hypothesis(Study1_effort.traces, "a_Intercept > 0"),
+  t4 = hypothesis(Study1_effort.traces, "a_mbased_effort_pre > 0"))
+
+Study1_effort.hddm.results = data.frame(
+  test = c(
+    "v_Intercept > 0",
+    "v_mbased_effort_pre > 0",
+    "a_Intercept > 0",
+    "a_mbased_effort_pre > 0"),
+  Post.Prob = sapply(Study1_effort_hypotheses, function(x) x$hypothesis$Post.Prob),
+  estimate = sapply(Study1_effort_hypotheses, function(x) x$hypothesis$Estimate),
+  ci.lower = sapply(Study1_effort_hypotheses, function(x) x$hypothesis$CI.Lower),
+  ci.upper = sapply(Study1_effort_hypotheses, function(x) x$hypothesis$CI.Upper),
+  est.error = sapply(Study1_effort_hypotheses, function(x) x$hypothesis$Est.Error))
+
+Study1_effort.hddm.results
+```
+
+
+```{r Study1 effort hddm plot}
+Study1_effort.plot = bind_rows(
+  Study1_effort.traces %>%
+    dplyr::mutate(Intercept = v_Intercept,
+                  mbased_effort = v_mbased_effort_pre,
+                  Category = 'v')%>%
+    dplyr::select(Intercept,mbased_effort,Category),
+  
+  Study1_effort.traces %>%
+    dplyr::mutate(Intercept = a_Intercept,
+                  mbased_effort = a_mbased_effort_pre,
+                  Category = 'a')%>%
+    dplyr::select(Intercept,mbased_effort,Category),)
+
+Study1_effort.hddm=ggplot(Study1_effort.plot, aes(x = mbased_effort, fill = Category)) +
+  geom_density(alpha = 0.4, linewidth = 0.8, aes(color = Category)) +
+  scale_fill_manual(values = c('#EDBC68','#78ADDB')) +
+  scale_color_manual(values = c('#EDBC68','#78ADDB')) +  
+  labs(x = 'effort', y = 'Density')+gg.side
+ 
+Study1_effort.hddm
+
+#ggsave("...../Study1_effort.hddm.plot.pdf",Study1_effort.hddm,width = 6, height = 5)
+```
+
+
+### Study1 efficacy hddm
+```{r Study1 efficacy hddm test}
+###model2 efficacy ###
+Study1_efficacy.hddm = read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Study1_efficacy_cong_traces.csv")
+
+Study1_efficacy.traces <- Study1_efficacy.hddm %>% 
+  dplyr::select(v_Intercept,
+                v_mbased_efficacy_pre,
+                a_Intercept,
+                a_mbased_efficacy_pre)
+
+# Add the posterior probabilities
+Study1_efficacy_hypotheses = list(
+  t1 = hypothesis(Study1_efficacy.traces, "v_Intercept > 0"),
+  t2 = hypothesis(Study1_efficacy.traces, "v_mbased_efficacy_pre > 0"),
+  t3 = hypothesis(Study1_efficacy.traces, "a_Intercept > 0"),
+  t4 = hypothesis(Study1_efficacy.traces, "a_mbased_efficacy_pre > 0"))
+
+Study1_efficacy.hddm.results = data.frame(
+  test = c(
+    "v_Intercept > 0",
+    "v_mbased_efficacy_pre > 0",
+    "a_Intercept > 0",
+    "a_mbased_efficacy_pre > 0"),
+  Post.Prob = sapply(Study1_efficacy_hypotheses, function(x) x$hypothesis$Post.Prob),
+  estimate = sapply(Study1_efficacy_hypotheses, function(x) x$hypothesis$Estimate),
+  ci.lower = sapply(Study1_efficacy_hypotheses, function(x) x$hypothesis$CI.Lower),
+  ci.upper = sapply(Study1_efficacy_hypotheses, function(x) x$hypothesis$CI.Upper),
+  est.error = sapply(Study1_efficacy_hypotheses, function(x) x$hypothesis$Est.Error))
+
+Study1_efficacy.hddm.results
+```
+
+```{r Study1 efficacy hddm plot}
+Study1_efficacy.plot = bind_rows(
+  Study1_efficacy.traces %>%
+    dplyr::mutate(Intercept = v_Intercept,
+                  mbased_efficacy = v_mbased_efficacy_pre,
+                  Category = 'v')%>%
+    dplyr::select(Intercept,mbased_efficacy,Category),
+  
+  Study1_efficacy.traces %>%
+    dplyr::mutate(Intercept = a_Intercept,
+                  mbased_efficacy = a_mbased_efficacy_pre,
+                  Category = 'a')%>%
+    dplyr::select(Intercept,mbased_efficacy,Category),)
+
+Study1_efficacy.hddm=ggplot(Study1_efficacy.plot, 
+                            aes(x = mbased_efficacy, fill = Category)) +
+  geom_density(alpha = 0.4, linewidth = 0.8, aes(color = Category)) +
+  scale_fill_manual(values = c('#EDBC68','#78ADDB')) +
+  scale_color_manual(values = c('#EDBC68','#78ADDB')) +  
+  labs(x = 'efficacy', y = 'Density')+gg.side
+
+Study1_efficacy.hddm
+
+#ggsave("..../Study1_efficacy.hddm.plot.pdf",Study1_efficacy.hddm,width = 6, height = 5)
+```
+### Study1 effort and efficacy jiont hddm
+```{r Study1 effort and efficacy hddm}
+###model2 effort ###
+Study1_combined.hddm = read.csv("C:/Users/ruirui/Desktop/文章3/Study1/Study1_combined_cong_traces.csv")
+
+Study1_combined.traces = Study1_combined.hddm %>% 
+  dplyr::select(v_Intercept,
+                v_mbased_effort_pre,
+                v_mbased_efficacy_pre,
+                a_Intercept,
+                a_mbased_effort_pre,
+                a_mbased_efficacy_pre)%>%
+  mutate(
+    chain = rep(1:5, each = 3000),
+    sample = rep(1:3000, times = 5) )
+
+# Add the posterior probabilities
+Study1_combined_hypotheses = list(
+  t1 = hypothesis(Study1_combined.traces, "v_Intercept > 0"),
+  t2 = hypothesis(Study1_combined.traces, "v_mbased_effort_pre > v_mbased_efficacy_pre"),
+  t3 = hypothesis(Study1_combined.traces, "a_Intercept > 0"),
+  t4 = hypothesis(Study1_combined.traces, "a_mbased_effort_pre > a_mbased_efficacy_pre"))
+
+Study1_combined.hddm.results = data.frame(
+  test = c(
+    "v_Intercept > 0",
+    "v_mbased_effort_pre > v_mbased_efficacy_pre",
+    "a_Intercept > 0",
+    "a_mbased_effort_pre > a_mbased_efficacy_pre"),
+  Post.Prob = sapply(Study1_combined_hypotheses, function(x) x$hypothesis$Post.Prob),
+  estimate = sapply(Study1_combined_hypotheses, function(x) x$hypothesis$Estimate),
+  ci.lower = sapply(Study1_combined_hypotheses, function(x) x$hypothesis$CI.Lower),
+  ci.upper = sapply(Study1_combined_hypotheses, function(x) x$hypothesis$CI.Upper),
+  est.error = sapply(Study1_combined_hypotheses, function(x) x$hypothesis$Est.Error))
+
+Study1_combined.hddm.results
+```
+
+
+```{r Study1 effort and efficacy hddm drift plot}
+Study1_combined_v.plot <- Study1_combined.traces %>%
+  dplyr::select(
+    mbased_effort = v_mbased_effort_pre,
+    mbased_efficacy = v_mbased_efficacy_pre) %>%
+  
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "Estimate_type",
+    values_to = "Estimate") %>%
+  
+  dplyr::mutate(
+    Estimate_type = dplyr::recode(
+      Estimate_type,
+      mbased_effort = "Effort intention",
+      mbased_efficacy = "Efficacy expectation"))
+
+Study1_combined_v.hddm = ggplot(
+  Study1_combined_v.plot,
+  aes(x = Estimate, fill = Estimate_type,color = Estimate_type)) +
+  geom_density(alpha = 0.4, linewidth = 0.8) +
+  scale_fill_manual(
+    values = c(
+      "Effort intention" = "#A991CA",
+      "Efficacy expectation" = "#91AD51" )) +
+  scale_color_manual(
+    values = c(
+      "Effort intention" = "#A991CA",
+      "Efficacy expectation" = "#91AD51")) +
+  
+  labs( x = "Effect on drift rate",
+        y = "Posterior density",
+        fill = NULL,
+        color = NULL) +
+  theme_classic() +
+  theme(legend.position = "top")+gg.side
+
+Study1_combined_v.hddm
+
+#ggsave("....../Study1_combined_v.hddm.plot.pdf",Study1_combined_v.hddm,width = 6, height = 5)
+```
+
+```{r Study1 effort and efficacy hddm threshold plot}
+Study1_combined_a.plot = Study1_combined.traces %>%
+  dplyr::select(
+    mbased_effort = a_mbased_effort_pre,
+    mbased_efficacy = a_mbased_efficacy_pre) %>%
+  
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "Estimate_type",
+    values_to = "Estimate") %>%
+  
+  dplyr::mutate(
+    Estimate_type = dplyr::recode(
+      Estimate_type,
+      mbased_effort = "Effort intention",
+      mbased_efficacy = "Efficacy expectation"))
+
+Study1_combined_a.hddm = ggplot(
+  Study1_combined_a.plot,
+  aes(x = Estimate, fill = Estimate_type,color = Estimate_type)) +
+  geom_density(alpha = 0.4, linewidth = 0.8) +
+  scale_fill_manual(
+    values = c(
+      "Effort intention" = "#A991CA",
+      "Efficacy expectation" = "#91AD51" )) +
+  scale_color_manual(
+    values = c(
+      "Effort intention" = "#A991CA",
+      "Efficacy expectation" = "#91AD51" )) +
+  
+  labs( x = "Effect on decision threshold",
+        y = "Posterior density",
+        fill = NULL,
+        color = NULL) +
+  theme_classic() +
+  theme(legend.position = "top")+gg.side
+
+Study1_combined_a.hddm
+
+#ggsave("...../Study1_combined_a.hddm.plot.pdf",Study1_combined_a.hddm,width = 6, height = 5)
+```
+
+## Study1 RL LOOIC
+```{r Study1 effort looic plot}
+Study1_effort_LOOIC = tribble(
+  ~Model,      ~dLOOIC,
+  "Model0",   750.28,
+  "Model1",   606.27,
+  "Model2",   88.72,
+  "Model3",   0) %>%
+  
+  mutate(Model = factor(Model, levels = c("Model0","Model1","Model2","Model3")))
+
+Study1_effort_LOOIC_plot = ggplot(Study1_effort_LOOIC,
+                                  aes(x = Model, y = dLOOIC)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f", dLOOIC)),
+            vjust = -0.3, size = 3) +
+  labs(x = NULL, y = "ΔLOOIC (best model = 0; lower is better)") +
+  theme_classic() +
+  coord_cartesian(ylim = c(0, max(Study1_effort_LOOIC$dLOOIC) * 1.1))+gg.side
+
+Study1_effort_LOOIC_plot
+
+#ggsave("..../plot/Study1_effort_LOOIC.pdf",Study1_effort_LOOIC_plot, width = 4.9, height = 6)
+```
+
+```{r Study1 efficacy looic plot}
+Study1_efficacy_LOOIC = tribble(
+  ~Model,      ~dLOOIC,
+  "Model0",   889.79,
+  "Model1",   659.59,
+  "Model2",   63.02,
+  "Model3",   0) %>%
+  
+  mutate(Model = factor(Model, levels = c("Model0","Model1","Model2","Model3")))
+
+Study1_efficacy_LOOIC_plot = ggplot(Study1_efficacy_LOOIC, 
+                                    aes(x = Model, y = dLOOIC)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f", dLOOIC)),
+            vjust = -0.3, size = 3) +
+  labs(x = NULL, y = "ΔLOOIC (best model = 0; lower is better)") +
+  theme_classic() +
+  coord_cartesian(ylim = c(0, max(Study1_efficacy_LOOIC$dLOOIC) * 1.1))+gg.side
+
+Study1_efficacy_LOOIC_plot
+
+#ggsave("...../Study1_efficacy_LOOIC.pdf",Study1_efficacy_LOOIC_plot, width = 4.9, height = 6)
+```
